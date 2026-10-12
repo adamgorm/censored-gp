@@ -1,0 +1,9 @@
+^\.git.*$
+^A5055data\.txt$
+^data_example\.R$
+^functions\.stan$
+^research$
+^tools$
+^.*\.Rproj$
+^censoredGP.*\.(tar\.gz|Rcheck)$
+^\.DS_Store$
