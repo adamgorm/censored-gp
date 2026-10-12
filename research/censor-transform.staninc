@@ -1,0 +1,42 @@
+  // This transforms a joint Gaussian restricted to the observed censoring event.
+  // The returned log masses are required Jacobian factors, not a normalized TMVN prior.
+  tuple(vector, real) censor_transform(matrix L, vector yo, vector u,
+                                       vector b_lower, vector b_upper, array[] int kind) {
+    int No=num_elements(yo);
+    int Nc=num_elements(u);
+    int N=No+Nc;
+    vector[N] z;
+    vector[Nc] yc;
+    real log_weight=0;
+    if(No>0) z[:No]=mdivide_left_tri_low(L[:No,:No],yo);
+    if(Nc>0) for(k in 1:Nc) {
+      int i=No+k;
+      real cm=i==1 ? 0 : L[i,:i-1]*z[:i-1];
+      real sd=L[i,i];
+      real lm;
+      if(kind[k]==1) {
+        lm=normal_lcdf(b_upper[k]|cm,sd);
+        z[i]=std_normal_log_qf(log(u[k])+lm);
+      } else if(kind[k]==2) {
+        lm=normal_lcdf(-b_lower[k]|-cm,sd);
+        z[i]=-std_normal_log_qf(log1m(u[k])+lm);
+      } else {
+        real a=(b_lower[k]-cm)/sd;
+        real b=(b_upper[k]-cm)/sd;
+        real log_fa=normal_lcdf(a|0,1);
+        real log_fb=normal_lcdf(b|0,1);
+        real log_sa=normal_lcdf(-a|0,1);
+        real log_sb=normal_lcdf(-b|0,1);
+        if(a>0) lm=log_diff_exp(log_sa,log_sb);
+        else lm=log_diff_exp(log_fb,log_fa);
+        {
+          real log_p=log_sum_exp(log_fa,log(u[k])+lm);
+          if(log_p < log(0.5)) z[i]=std_normal_log_qf(log_p);
+          else z[i]=-std_normal_log_qf(log_sum_exp(log_sb,log1m(u[k])+lm));
+        }
+      }
+      yc[k]=cm+sd*z[i];
+      log_weight+=lm;
+    }
+    return(yc,log_weight);
+  }
