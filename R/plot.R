@@ -39,9 +39,20 @@ plot.cgp_fit <- function(x, newdata = NULL, type = c("population", "latent"),
       if (length(group_variables) != 1L) stop("Supply newdata for a compound grouping expression.", call. = FALSE)
       if (is.null(groups)) groups <- utils::head(prepared$group_levels, 6L)
       newdata <- do.call(rbind, lapply(as.character(groups), function(group) {
-        result <- newdata
-        # Convert factors to character before adding independently modeled groups.
-        result[[group_variables]] <- rep(group, n)
+        training_row <- match(group, prepared$group)
+        if (!is.na(training_row)) {
+          # Group labels may be transformed by the formula. Preserve a raw
+          # training value that evaluates to the requested label.
+          result <- x$data[rep(training_row, n), , drop = FALSE]
+          result[[variable]] <- newdata[[variable]]
+        } else {
+          if (!is.symbol(prepared$formula_parts$group)) {
+            stop("Supply `newdata` to plot new groups with a transformed grouping expression.", call. = FALSE)
+          }
+          result <- newdata
+          # Convert factors to character before adding independently modeled groups.
+          result[[group_variables]] <- rep(group, n)
+        }
         result
       }))
     }

@@ -107,7 +107,7 @@ cgp <- function(formula, data, priors = cgp_priors(), kernel = "exp_quad",
   }, numeric(1))
   object <- structure(
     list(
-      call = call, formula = formula, data = as.data.frame(data),
+      call = call, formula = formula, data = model_data_frame(data),
       prepared = prepared, priors = priors, kernel = kernel, parameterization = parameterization,
       draws = draws, diagnostics = diagnostics, elapsed = elapsed,
       chains = chains, iterations = iter_sampling, max_treedepth = max_treedepth,

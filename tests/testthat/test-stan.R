@@ -54,3 +54,21 @@ test_that("Stan handles entirely censored and entirely observed single curves", 
     expect_true(all(is.finite(posterior_predict(fit, ndraws = 5, seed = 2))))
   }
 })
+
+test_that("fits retain named-list matrix inputs for default predictions", {
+  skip_if(Sys.getenv("CENSOREDGP_TEST_STAN") != "true", "Enable explicit Stan integration tests")
+  skip_if_not_installed("cmdstanr")
+  data <- list(
+    coordinates = cbind(x1 = c(0, 0.2, 0.7, 1), x2 = c(0, 1, 1, 0)),
+    y = c(0.2, -0.1, -0.2, 0.3)
+  )
+  fit <- cgp(y ~ coordinates, data, mean = 0,
+    chains = 2, parallel_chains = 2, iter_warmup = 250, iter_sampling = 100,
+    adapt_delta = 0.95, seed = 818, refresh = 0, diagnostic_warnings = FALSE
+  )
+  expect_identical(fit$data$coordinates, data$coordinates)
+  expect_identical(predict(fit, seed = 1), predict(fit, data, seed = 1))
+  expect_identical(fitted(fit, seed = 2), predict(fit, data, seed = 2))
+  expect_identical(posterior_epred(fit, seed = 3), posterior_epred(fit, data, seed = 3))
+  expect_identical(posterior_predict(fit, seed = 4), posterior_predict(fit, data, seed = 4))
+})

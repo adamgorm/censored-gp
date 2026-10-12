@@ -60,6 +60,20 @@ evaluate_coordinates <- function(expression, data, environment, dimension = NULL
   coordinates
 }
 
+model_data_frame <- function(data) {
+  if (is.data.frame(data)) return(data)
+  # Protect matrix-valued formula variables from as.data.frame.list(), which
+  # would otherwise split them into separately named columns.
+  matrices <- vapply(data, is.matrix, logical(1))
+  protected <- data
+  protected[matrices] <- lapply(data[matrices], I)
+  result <- as.data.frame(protected, optional = TRUE)
+  for (column in names(data)[matrices]) {
+    attr(result[[column]], "class") <- attr(data[[column]], "class")
+  }
+  result
+}
+
 squared_distance <- function(first, second = first) {
   # Subtract coordinates before squaring. The norm/cross-product identity loses
   # short distances when coordinates have a large common offset (e.g. dates).
