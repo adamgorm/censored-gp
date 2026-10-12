@@ -11,7 +11,7 @@ test_that("Gaussian and exact quantile gradients match numerical derivatives", {
       group_cov <- ifelse(outer(group, group, "=="), 1, -0.5)
       theta <- c(1.2, 0.6, 0.7, 0.4, 0.25)
       observed <- rnorm(n_observed)
-      lower <- c(-Inf, -0.2, -0.5)
+      lower <- c(-Inf, -0.2, -Inf)
       upper <- c(0.3, Inf, 0.8)
       state <- c(theta, 0.2, 0.3, 0.5, 0.7)
       evaluate <- function(state) {
@@ -51,10 +51,9 @@ test_that("Gaussian and exact quantile gradients match numerical derivatives", {
   }
 })
 
-test_that("extreme tails and narrow intervals have finite derivatives", {
+test_that("extreme one-sided limits have finite derivatives", {
   for (bounds in list(
-    c(-Inf, -40), c(40, Inf), c(39.9, 40),
-    c(-40, -39.9), c(-1e-7, 1e-7)
+    c(-Inf, -40), c(40, Inf), c(-Inf, 40), c(-40, Inf)
   )) {
     result <- cgp_censor_evaluate(
       matrix(0, 1, 1), matrix(0, 1, 1),
@@ -66,6 +65,13 @@ test_that("extreme tails and narrow intervals have finite derivatives", {
     expect_gt(as.numeric(result$censored_values), bounds[1])
     expect_lt(as.numeric(result$censored_values), bounds[2])
   }
+})
+
+test_that("the censoring core rejects two finite limits", {
+  expect_error(cgp_censor_evaluate(
+    matrix(0, 1, 1), matrix(0, 1, 1), c(1, 1, 1, 1, 0.1),
+    0, numeric(), 0.4, 1, 2, 1L
+  ), "one finite left or right limit")
 })
 
 test_that("input offsets do not erase short GP distances", {

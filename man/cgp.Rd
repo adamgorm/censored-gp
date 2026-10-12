@@ -67,7 +67,7 @@ A serializable \code{cgp_fit} with posterior draws, priors, original data,
 and sampler diagnostics. Prediction does not depend on external CSV files.
 }
 \description{
-The formula \code{cens(value, type, upper) ~ time | subject} fits a population
+The formula \code{cens(value, type) ~ time | subject} fits a population
 curve and subject deviations. Omit \verb{| subject} for a single curve. A numeric
 response without \code{\link[=cens]{cens()}} denotes entirely uncensored observations.
 Inputs may be a numeric vector or \code{cbind(x1, x2, ...)} for an isotropic GP.
@@ -82,10 +82,9 @@ are used. Both available parameterizations have the same posterior target.
 \dontrun{
 d <- data.frame(
   time = c(0, 1, 2, 3), value = c(1, 0.5, 2, 1.5),
-  type = c("none", "left", "right", "interval"),
-  upper = c(NA, NA, NA, 2)
+  type = c("none", "left", "right", "left")
 )
-fit <- cgp(cens(value, type, upper) ~ time, d,
+fit <- cgp(cens(value, type) ~ time, d,
   priors = cgp_priors(lengthscale = lognormal_prior(log(2), 0.7))
 )
 predict(fit, data.frame(time = seq(0, 3, length.out = 50)))

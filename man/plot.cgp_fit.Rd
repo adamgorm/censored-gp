@@ -42,6 +42,5 @@ A \code{ggplot2} plot, which may be customized with standard ggplot layers.
 }
 \description{
 Left and right censoring are shown by downward and upward triangles.
-Interval-censored measurements are shown by a diamond and an interval bar.
 Ribbons are pointwise credible intervals for the smooth latent function.
 }

@@ -5,24 +5,18 @@
 #' rather than hard constraints on the underlying smooth curve.
 #'
 #' @param y Numeric values: the exact measurement for `"none"`, the upper
-#'   detection limit for `"left"`, the lower limit for `"right"`, or the lower
-#'   interval endpoint for `"interval"`.
-#' @param type Character vector of `"none"`, `"left"`, `"right"`, or
-#'   `"interval"`. A single value is recycled to all rows. A logical vector is
+#'   detection limit for `"left"`, or the lower limit for `"right"`.
+#' @param type Character vector of `"none"`, `"left"`, or `"right"`.
+#'   A single value is recycled to all rows. A logical vector is
 #'   shorthand for left censoring (`TRUE`) versus exact observation (`FALSE`).
-#' @param upper Upper endpoints for interval-censored rows; ignored for other
-#'   types. May be a scalar or a vector the same length as `y`.
 #' @return A two-column matrix of lower and upper bounds, of class `cgp_response`.
 #' @examples
-#' # Exact, left, right, and interval censoring in one response.
-#' cens <- cens(c(1, 2, 3, 4), c("none", "left", "right", "interval"),
-#'   upper = c(NA, NA, NA, 5)
-#' )
-#' cens
+#' # Exact, left-censored, and right-censored observations in one response.
+#' cens(c(1, 2, 3), c("none", "left", "right"))
 #' # Observation-specific detection limits are supplied directly in y.
 #' cens(c(1.4, 1.7, 2.1), c(FALSE, TRUE, TRUE))
 #' @export
-cens <- function(y, type = "none", upper = NULL) {
+cens <- function(y, type = "none") {
   if (!is.numeric(y) || !length(y) || any(!is.finite(y))) {
     stop("`y` must contain finite numeric measurements or censoring limits.", call. = FALSE)
   }
@@ -30,24 +24,13 @@ cens <- function(y, type = "none", upper = NULL) {
   if (is.logical(type)) type <- ifelse(type, "left", "none")
   if (is.factor(type)) type <- as.character(type)
   if (length(type) == 1L) type <- rep(type, n)
-  allowed <- c("none", "left", "right", "interval")
+  allowed <- c("none", "left", "right")
   if (!is.character(type) || length(type) != n || anyNA(type) || any(!type %in% allowed)) {
-    stop("`type` must give none, left, right, or interval for every observation.", call. = FALSE)
+    stop("`type` must give none, left, or right for every observation.", call. = FALSE)
   }
   lower_bound <- upper_bound <- as.numeric(y)
   lower_bound[type == "left"] <- -Inf
   upper_bound[type == "right"] <- Inf
-  intervals <- type == "interval"
-  if (any(intervals)) {
-    if (length(upper) == 1L) upper <- rep(upper, n)
-    if (!is.numeric(upper) || length(upper) != n || any(!is.finite(upper[intervals]))) {
-      stop("Supply finite `upper` endpoints for every interval-censored row.", call. = FALSE)
-    }
-    if (any(upper[intervals] <= y[intervals])) {
-      stop("Interval upper endpoints must exceed their lower endpoints.", call. = FALSE)
-    }
-    upper_bound[intervals] <- upper[intervals]
-  }
   structure(cbind(lower = lower_bound, upper = upper_bound),
     class = c("cgp_response", "matrix", "array")
   )
@@ -64,9 +47,13 @@ print.cgp_response <- function(x, ...) {
 as_censoring_data <- function(response) {
   lower <- response[, 1L]
   upper <- response[, 2L]
-  type <- rep("interval", length(lower))
-  type[lower == upper] <- "none"
-  type[is.infinite(lower)] <- "left"
-  type[is.infinite(upper)] <- "right"
+  exact <- is.finite(lower) & is.finite(upper) & lower == upper
+  left <- is.infinite(lower) & lower < 0 & is.finite(upper)
+  right <- is.finite(lower) & is.infinite(upper) & upper > 0
+  # Reject manually constructed responses outside the public censoring types.
+  if (anyNA(c(lower, upper)) || !all(exact | left | right)) {
+    stop("Responses must be exact, left censored, or right censored.", call. = FALSE)
+  }
+  type <- ifelse(exact, "none", ifelse(left, "left", "right"))
   data.frame(lower = lower, upper = upper, type = type)
 }

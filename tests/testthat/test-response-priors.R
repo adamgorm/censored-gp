@@ -1,14 +1,18 @@
 test_that("observation-specific censoring produces the intended bounds", {
-  response <- cens(c(1, 2, 3, 4, 0.5, -1),
-    c("none", "left", "right", "interval", "left", "right"),
-    upper = c(NA, NA, NA, 5, NA, NA)
+  response <- cens(
+    c(1, 2, 3, 4, 0.5, -1),
+    c("none", "left", "right", "none", "left", "right")
   )
   expect_equal(as.numeric(response[, 1]), c(1, -Inf, 3, 4, -Inf, -1))
-  expect_equal(as.numeric(response[, 2]), c(1, 2, Inf, 5, 0.5, Inf))
+  expect_equal(as.numeric(response[, 2]), c(1, 2, Inf, 4, 0.5, Inf))
   expect_equal(cens(c(1, 2), c(FALSE, TRUE))[, 2], c(1, 2))
   expect_error(cens(NA), "finite")
-  expect_error(cens(1, "interval", 0), "exceed")
-  expect_error(cens(1, "interval"), "upper")
+  expect_error(cens(1, "interval"), "none, left, or right")
+  expect_error(cens(1, "left", upper = 2), "unused argument")
+  unsupported <- structure(cbind(lower = 1, upper = 2),
+    class = c("cgp_response", "matrix", "array")
+  )
+  expect_error(as_censoring_data(unsupported), "exact, left censored, or right censored")
   expect_error(cens(c(1, 2), c("left", "unknown")), "every observation")
 })
 
@@ -16,17 +20,16 @@ test_that("formula preparation retains mixed mechanisms and row identities", {
   data <- data.frame(
     time = c(3, 1, 5, 2, 4), id = c("B", "A", "B", "A", "B"),
     y = c(0.4, 1, -0.2, 0.5, -0.1),
-    kind = c("interval", "none", "right", "left", "left"), high = c(0.7, NA, NA, NA, NA)
+    kind = c("right", "none", "right", "left", "left")
   )
   prepared <- prepare_model(
-    cens(y, kind, high) ~ time | id, data, cgp_priors(),
+    cens(y, kind) ~ time | id, data, cgp_priors(),
     "exp_quad", "constant", "sum_to_zero", "quantile"
   )
   expect_equal(prepared$order, c(2L, 1L, 3L, 4L, 5L))
   expect_equal(prepared$censor_rows, c(1L, 3L, 4L, 5L))
-  expect_equal(prepared$stan_data$censor_kind, c(3L, 2L, 1L, 1L))
-  expect_equal(prepared$stan_data$censor_upper, c(0.7, 0, 0.5, -0.1))
-  expect_equal(prepared$stan_data$censor_lower, c(0.4, -0.2, 0, 0))
+  expect_equal(prepared$stan_data$censor_kind, c(2L, 2L, 1L, 1L))
+  expect_equal(prepared$stan_data$censor_limit, c(0.4, -0.2, 0.5, -0.1))
   expect_equal(prepared$stan_data$group_cov[1, 2], -1)
   expect_error(prepare_model(
     y ~ time, transform(data, time = NA), cgp_priors(),

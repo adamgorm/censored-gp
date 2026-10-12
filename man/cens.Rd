@@ -4,19 +4,15 @@
 \alias{cens}
 \title{Describe Observation-Specific Censoring}
 \usage{
-cens(y, type = "none", upper = NULL)
+cens(y, type = "none")
 }
 \arguments{
 \item{y}{Numeric values: the exact measurement for \code{"none"}, the upper
-detection limit for \code{"left"}, the lower limit for \code{"right"}, or the lower
-interval endpoint for \code{"interval"}.}
+detection limit for \code{"left"}, or the lower limit for \code{"right"}.}
 
-\item{type}{Character vector of \code{"none"}, \code{"left"}, \code{"right"}, or
-\code{"interval"}. A single value is recycled to all rows. A logical vector is
+\item{type}{Character vector of \code{"none"}, \code{"left"}, or \code{"right"}.
+A single value is recycled to all rows. A logical vector is
 shorthand for left censoring (\code{TRUE}) versus exact observation (\code{FALSE}).}
-
-\item{upper}{Upper endpoints for interval-censored rows; ignored for other
-types. May be a scalar or a vector the same length as \code{y}.}
 }
 \value{
 A two-column matrix of lower and upper bounds, of class \code{cgp_response}.
@@ -27,11 +23,8 @@ different censoring type and limits. Bounds describe noisy measurements,
 rather than hard constraints on the underlying smooth curve.
 }
 \examples{
-# Exact, left, right, and interval censoring in one response.
-cens <- cens(c(1, 2, 3, 4), c("none", "left", "right", "interval"),
-  upper = c(NA, NA, NA, 5)
-)
-cens
+# Exact, left-censored, and right-censored observations in one response.
+cens(c(1, 2, 3), c("none", "left", "right"))
 # Observation-specific detection limits are supplied directly in y.
 cens(c(1.4, 1.7, 2.1), c(FALSE, TRUE, TRUE))
 }

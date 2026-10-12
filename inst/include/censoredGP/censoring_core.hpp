@@ -6,19 +6,6 @@
 
 namespace censored_gp {
 
-// Stable log(exp(a) + exp(b)), also when one argument is negative infinity.
-inline double log_add(double a, double b) {
-  if (a < b) std::swap(a, b);
-  if (!std::isfinite(b)) return a;
-  return a + std::log1p(std::exp(b - a));
-}
-
-inline double log_subtract(double a, double b) {
-  if (!(a > b))
-    throw std::domain_error("Censoring interval has zero numerical probability");
-  return a + std::log(-std::expm1(b - a));
-}
-
 // Contract a symmetric covariance adjoint with the five kernel derivatives.
 // Only the lower triangle is visited; off-diagonal entries count twice.
 inline Vector covariance_score(const Matrix& distance2, const Matrix& group_cov,
@@ -84,22 +71,22 @@ struct CensoringEvaluation {
     censored_values.resize(n_censored);
     for (Eigen::Index k = 0; k < n_censored; ++k) {
       const Eigen::Index i = n_observed + k;
-      if (!(lower[k] < upper[k]))
-        throw std::domain_error("Censoring lower bound must be below upper bound");
+      const bool left = std::isinf(lower[k]) && lower[k] < 0.0 && std::isfinite(upper[k]);
+      const bool right = std::isfinite(lower[k]) && std::isinf(upper[k]) && upper[k] > 0.0;
+      if (!left && !right)
+        throw std::invalid_argument("Censored measurements require one finite left or right limit");
       const double conditional_mean = i ? L.row(i).head(i).dot(z.head(i)) : 0.0;
       a[k] = (lower[k] - mean - conditional_mean) / L(i, i);
       b[k] = (upper[k] - mean - conditional_mean) / L(i, i);
-      const double log_fa = normal.log_cdf(a[k]);
-      const double log_fb = normal.log_cdf(b[k]);
-      const double log_sa = normal.log_cdf(-a[k]);
-      const double log_sb = normal.log_cdf(-b[k]);
-      // Reflection avoids subtracting two CDFs rounded to one in the right tail.
-      log_mass[k] = a[k] > 0 ? log_subtract(log_sa, log_sb)
-                                    : log_subtract(log_fb, log_fa);
-      const double log_p = log_add(log_fa, std::log(unit[k]) + log_mass[k]);
-      z[i] = log_p < -0.69314718055994530942
-        ? normal.log_quantile(log_p)
-        : -normal.log_quantile(log_add(log_sb, std::log1p(-unit[k]) + log_mass[k]));
+      // A one-sided event needs one log-CDF and one log-quantile. Reflection
+      // handles right censoring without subtracting a CDF rounded to one.
+      if (left) {
+        log_mass[k] = normal.log_cdf(b[k]);
+        z[i] = normal.log_quantile(std::log(unit[k]) + log_mass[k]);
+      } else {
+        log_mass[k] = normal.log_cdf(-a[k]);
+        z[i] = -normal.log_quantile(std::log1p(-unit[k]) + log_mass[k]);
+      }
       censored_values[k] = mean + conditional_mean + L(i, i) * z[i];
       log_density += log_mass[k];
     }

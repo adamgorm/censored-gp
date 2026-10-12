@@ -41,9 +41,8 @@ data {
   matrix[N, N] distance2;
   matrix[N, N] group_cov;
   vector[n_observed] observed;
-  array[N - n_observed] int<lower=1, upper=3> censor_kind;
-  vector[N - n_observed] censor_lower;
-  vector[N - n_observed] censor_upper;
+  array[N - n_observed] int<lower=1, upper=2> censor_kind;
+  vector[N - n_observed] censor_limit;
   array[6] int<lower=1, upper=6> prior_family;
   matrix[6, 3] prior_arguments;
 }
@@ -53,8 +52,8 @@ transformed data {
   vector[n_censored] upper_bound;
   if (n_censored > 0)
     for (k in 1 : n_censored) {
-      lower_bound[k] = censor_kind[k] == 1 ? negative_infinity() : censor_lower[k];
-      upper_bound[k] = censor_kind[k] == 2 ? positive_infinity() : censor_upper[k];
+      lower_bound[k] = censor_kind[k] == 1 ? negative_infinity() : censor_limit[k];
+      upper_bound[k] = censor_kind[k] == 2 ? positive_infinity() : censor_limit[k];
     }
   vector[quantile ? 0 : n_censored] bounded_lower = head(lower_bound,
                                                          quantile ? 0 : n_censored);

@@ -37,7 +37,7 @@ with_local_seed <- function(seed, expression) {
 
 formula_parts <- function(formula) {
   if (!inherits(formula, "formula") || length(formula) != 3L) {
-    stop("Use a formula such as `cens(value, type, upper) ~ time | subject`.", call. = FALSE)
+    stop("Use a formula such as `cens(value, type) ~ time | subject`.", call. = FALSE)
   }
   rhs <- formula[[3L]]
   while (is.call(rhs) && identical(rhs[[1L]], as.name("("))) rhs <- rhs[[2L]]
@@ -136,10 +136,12 @@ prepare_model <- function(formula, data, priors, kernel, mean, group_structure,
       fixed_mean = if (estimate_mean) 0 else mean, kernel = kernel_id(kernel),
       quantile = as.integer(parameterization == "quantile"), distance2 = geometry,
       group_cov = group_cov, observed = bounds$lower[bounds$type == "none"],
-      censor_kind = match(censor_types, c("left", "right", "interval")),
-      # Infinity sentinels are constructed in Stan, keeping the JSON data finite.
-      censor_lower = ifelse(censor_types == "left", 0, bounds$lower[censor_rows]),
-      censor_upper = ifelse(censor_types == "right", 0, bounds$upper[censor_rows])
+      censor_kind = match(censor_types, c("left", "right")),
+      # Each censored measurement has one finite detection limit. Stan supplies
+      # the infinite endpoint from the censoring direction.
+      censor_limit = ifelse(censor_types == "left", bounds$upper[censor_rows],
+        bounds$lower[censor_rows]
+      )
     ),
     encode_priors(priors)
   )
@@ -165,7 +167,7 @@ initial_values <- function(prepared, priors, parameterization) {
     numeric()
   }
   bounds <- prepared$bounds[prepared$censor_rows, , drop = FALSE]
-  values <- bounds$lower / 2 + bounds$upper / 2
+  values <- numeric(nrow(bounds))
   values[bounds$type == "left"] <- bounds$upper[bounds$type == "left"] - utils::tail(covariance_parameters, 1L)
   values[bounds$type == "right"] <- bounds$lower[bounds$type == "right"] + utils::tail(covariance_parameters, 1L)
   list(

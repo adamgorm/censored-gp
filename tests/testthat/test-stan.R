@@ -1,11 +1,10 @@
-test_that("Stan samples every censoring mechanism with both parameterizations", {
+test_that("Stan samples left and right censoring with both parameterizations", {
   skip_if(Sys.getenv("CENSOREDGP_TEST_STAN") != "true", "Enable explicit Stan integration tests")
   skip_if_not_installed("cmdstanr")
   data <- data.frame(
     time = c(0, 0.1, 0.25, 0.4, 0.6, 0.75, 0.9, 1),
     y = c(0.2, -0.1, 0.1, -0.3, 0.4, 0.2, 0.5, -0.2),
-    kind = rep(c("none", "left", "right", "interval"), 2),
-    upper = c(NA, NA, NA, 0.1, NA, NA, NA, 0.3),
+    kind = rep(c("none", "left", "right", "left"), 2),
     subject = rep(c("z", "a"), 4)
   )
   priors <- cgp_priors(
@@ -15,7 +14,7 @@ test_that("Stan samples every censoring mechanism with both parameterizations", 
   )
   for (parameterization in c("bounded", "quantile")) {
     for (kernel in c("exp_quad", "exponential", "matern32", "matern52")) {
-      fit <- cgp(cens(y, kind, upper) ~ time | subject, data,
+      fit <- cgp(cens(y, kind) ~ time | subject, data,
         priors = priors,
         parameterization = parameterization, kernel = kernel,
         chains = 2, parallel_chains = 2, iter_warmup = 250, iter_sampling = 100,
@@ -39,12 +38,12 @@ test_that("Stan samples every censoring mechanism with both parameterizations", 
 test_that("Stan handles entirely censored and entirely observed single curves", {
   skip_if(Sys.getenv("CENSOREDGP_TEST_STAN") != "true", "Enable explicit Stan integration tests")
   skip_if_not_installed("cmdstanr")
-  for (types in list(rep("none", 4), c("left", "right", "interval", "left"))) {
+  for (types in list(rep("none", 4), c("left", "right", "right", "left"))) {
     data <- data.frame(
       time = c(0, 0.2, 0.7, 1), y = c(0.2, -0.1, -0.2, 0.3),
-      type = types, upper = 0.5
+      type = types
     )
-    fit <- cgp(cens(y, type, upper) ~ time, data,
+    fit <- cgp(cens(y, type) ~ time, data,
       mean = 0,
       chains = 2, parallel_chains = 2, iter_warmup = 250, iter_sampling = 100,
       adapt_delta = 0.95, seed = 817, refresh = 0, diagnostic_warnings = FALSE

@@ -1,8 +1,8 @@
 # censoredGP
 
 Full Bayesian Gaussian process regression for value-censored functional and
-longitudinal data. Each observation can be exact, left censored, right censored,
-or interval censored, with its own limits. Models can describe a single curve
+longitudinal data. Each observation can be exact, left censored, or right censored,
+with its own limit. Models can describe a single curve
 or a population curve with subject deviations.
 
 The package extends the model in Hoffmann, Ekstrøm, Christoffersen, and Jensen,
@@ -37,11 +37,10 @@ library(censoredGP)
 d <- data.frame(
   time = c(0, 0.2, 0.5, 1),
   value = c(1.2, 0.4, 1.5, 0.8),
-  type = c("none", "left", "right", "interval"),
-  upper = c(NA, NA, NA, 1.1)
+  type = c("none", "left", "right", "left")
 )
 
-fit <- cgp(cens(value, type, upper) ~ time, d,
+fit <- cgp(cens(value, type) ~ time, d,
   priors = cgp_priors(
     intercept = normal_prior(1, 1),
     amplitude = student_t_prior(4, 0, 1),
@@ -51,16 +50,15 @@ fit <- cgp(cens(value, type, upper) ~ time, d,
 )
 ```
 
-`value` means the exact measurement for `"none"`, the upper limit for `"left"`,
-the lower limit for `"right"`, and the lower endpoint for `"interval"`.
-`upper` supplies interval upper endpoints and is ignored for the other types.
-Rows may mix all four types, and limits may differ within each type. A logical
+`value` means the exact measurement for `"none"`, the upper detection limit for
+`"left"`, or the lower detection limit for `"right"`. Each row has one value and
+one type; limits can differ between observations. A logical
 censoring column is also accepted: `TRUE` means left censored, `FALSE` exact.
 Missing measurements are not censoring; omit unmeasured rows.
 
-Use `cens(value, type, upper) ~ time | subject` for hierarchical curves, a
+Use `cens(value, type) ~ time | subject` for hierarchical curves, a
 plain `value ~ time` response for entirely observed data, or
-`cens(value, type, upper) ~ cbind(x1, x2) | subject` for multidimensional inputs.
+`cens(value, type) ~ cbind(x1, x2) | subject` for multidimensional inputs.
 Kernels are `"exp_quad"`, `"exponential"`, `"matern32"`, and `"matern52"`.
 
 ## Priors, predictions, and diagnostics
@@ -104,8 +102,7 @@ vignette("hiv-functional-data", package = "censoredGP")
 The vignette fits the manuscript's 365 measurements from 44 patients with
 explicit priors and full Bayesian inference. Its bundled figures and diagnostics
 come from a real four-chain Stan run. It includes the complete fitting code;
-set `CENSOREDGP_RUN_STAN=true` when rebuilding it to rerun sampling. Maintainers
-can regenerate the bundled results with `Rscript tools/run-paper-example.R`.
+set `CENSOREDGP_RUN_STAN=true` when rebuilding it to rerun sampling.
 
 The dense GP function values are integrated out analytically. Only censored
 noisy measurements are augmented. A shared Eigen C++ core supplies the likelihood,
@@ -118,17 +115,3 @@ Joint predictions preserve covariance across locations and components. Pointwise
 summaries avoid constructing an unnecessary prediction covariance. Dense GP
 factorization still costs O(n³) time and O(n²) memory. Computation does not assume
 regular grids, shared censoring limits, or the HIV data layout.
-
-For development:
-
-```sh
-Rscript -e 'testthat::test_local()'
-CENSOREDGP_TEST_STAN=true Rscript -e 'testthat::test_local()'
-Rscript tools/validate-core.R
-Rscript tools/validate-stan-gradients.R
-R CMD build .
-R CMD check --no-manual censoredGP_0.1.0.tar.gz
-```
-
-`research/` preserves the earlier optimization experiments and their benchmark
-results. The installed implementation is in `R/`, `src/`, and `inst/`.

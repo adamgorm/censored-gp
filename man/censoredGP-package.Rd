@@ -6,7 +6,7 @@
 \alias{censoredGP-package}
 \title{Full Bayesian Censored Gaussian Process Regression}
 \description{
-Models exact, left-censored, right-censored, and interval-censored functional
+Models exact, left-censored, and right-censored functional
 measurements using an exact dense Gaussian process covariance.
 }
 \seealso{

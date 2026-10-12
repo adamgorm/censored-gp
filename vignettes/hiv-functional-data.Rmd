@@ -31,7 +31,6 @@ four-chain Stan fit shown below. Ordinary vignette builds use those saved
 results, so reading or installing the package does not run MCMC. To rerun the
 complete analysis, install CmdStan >= 2.37 and set
 `Sys.setenv(CENSOREDGP_RUN_STAN = "true")` before rebuilding this vignette.
-The repository's `tools/run-paper-example.R` regenerates the bundled results.
 
 ## Describe what was observed
 
@@ -54,22 +53,20 @@ cens(hiv$log_rna[1:8], hiv$censoring[1:8])
 ```
 
 The interface describes censoring separately at every observation. For example,
-the following response combines all four observation mechanisms:
+the following response combines exact, left-censored, and right-censored observations:
 
 ```{r mixed-censoring}
 mixed <- data.frame(
   time = c(0, 0.2, 0.5, 1, 1.4),
   value = c(2.8, 1.7, 3.2, 2.0, 1.3),
-  type = c("none", "left", "right", "interval", "left"),
-  upper = c(NA, NA, NA, 2.4, NA)
+  type = c("none", "left", "right", "right", "left")
 )
-cens(mixed$value, mixed$type, mixed$upper)
-# Fit with: cgp(cens(value, type, upper) ~ time, mixed, priors = ...)
+cens(mixed$value, mixed$type)
+# Fit with: cgp(cens(value, type) ~ time, mixed, priors = ...)
 ```
 
 For an exact row, `value` is the measured response. It is the upper limit for
-left censoring, the lower limit for right censoring, and the lower endpoint for
-interval censoring; `upper` supplies the interval's other endpoint. Notice that
+left censoring or the lower limit for right censoring. Notice that
 the two left-censored rows have different limits. A logical censoring vector is
 shorthand for left censored (`TRUE`) versus exact (`FALSE`).
 

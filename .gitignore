@@ -10,3 +10,5 @@ src/*.dylib
 *.Rcheck/
 vignettes/*.html
 vignettes/*.R
+research/
+tools/

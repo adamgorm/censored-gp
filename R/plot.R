@@ -1,7 +1,6 @@
 #' Plot Posterior Functional Curves and Censored Observations
 #'
 #' Left and right censoring are shown by downward and upward triangles.
-#' Interval-censored measurements are shown by a diamond and an interval bar.
 #' Ribbons are pointwise credible intervals for the smooth latent function.
 #'
 #' @param x A fitted [cgp()] model.
@@ -57,9 +56,7 @@ plot.cgp_fit <- function(x, newdata = NULL, type = c("population", "latent"),
   predictions <- predictions[order(predictions$group, predictions$coordinate), ]
   observations <- prepared$bounds
   observations$value <- ifelse(observations$type == "left", observations$upper,
-    ifelse(observations$type == "right", observations$lower,
-      observations$lower / 2 + observations$upper / 2
-    )
+    observations$lower
   )
   observations$coordinate <- prepared$coordinates[, 1L]
   observations$group <- if (type == "latent") prepared$group else ".population"
@@ -73,15 +70,11 @@ plot.cgp_fit <- function(x, newdata = NULL, type = c("population", "latent"),
       data = observations,
       ggplot2::aes(y = .data$value, shape = .data$type), alpha = 0.65
     ) +
-    ggplot2::geom_linerange(
-      data = observations[observations$type == "interval", ],
-      ggplot2::aes(y = NULL, ymin = .data$lower, ymax = .data$upper), alpha = 0.5
-    ) +
     ggplot2::scale_shape_manual(
-      values = c(none = 16, left = 25, right = 24, interval = 23),
+      values = c(none = 16, left = 25, right = 24),
       name = "Observation", labels = c(
         none = "Exact", left = "Left censored",
-        right = "Right censored", interval = "Interval censored"
+        right = "Right censored"
       )
     ) +
     ggplot2::labs(x = prepared$coordinate_label, y = "Response") +

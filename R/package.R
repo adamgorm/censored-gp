@@ -1,6 +1,6 @@
 #' Full Bayesian Censored Gaussian Process Regression
 #'
-#' Models exact, left-censored, right-censored, and interval-censored functional
+#' Models exact, left-censored, and right-censored functional
 #' measurements using an exact dense Gaussian process covariance.
 #'
 #' @useDynLib censoredGP, .registration = TRUE

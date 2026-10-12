@@ -8,8 +8,8 @@ Authors@R: c(
     person("Andreas Kryger", "Jensen", role = c("aut", "cre"),
            email = "aejensen@users.noreply.github.com"))
 Description: Fits exact dense Gaussian process models to functional and
-    longitudinal measurements with observation-specific left, right, and
-    interval censoring. Full Bayesian inference uses Stan Hamiltonian Monte
+    longitudinal measurements with observation-specific left and right
+    censoring. Full Bayesian inference uses Stan Hamiltonian Monte
     Carlo with analytical C++ likelihood derivatives. Supports hierarchical
     curves, explicit hyperparameter priors, prior predictive checks, and
     joint posterior predictions. Implements the model of Hoffmann et al.
