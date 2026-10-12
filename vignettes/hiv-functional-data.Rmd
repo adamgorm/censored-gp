@@ -91,11 +91,14 @@ scales. Patient deviations have marginal variance $k_\eta(t,t)$ and cross-patien
 covariance $-k_\eta(s,t)/(44-1)$, enforcing $\sum_g\eta_g(t)=0$. Thus the
 population curve is $\beta_0+\mu(t)$ and each patient curve adds its deviation.
 
-We extend the manuscript's zero prior mean by estimating a constant intercept
-$\beta_0$ with a proper prior. Set `mean = 0` to use the manuscript's zero-mean
-specification; that removes the intercept parameter and its prior. We also
-replace the original example's empirical Bayes hyperparameter estimates with
-joint Bayesian inference.
+The package estimates a constant intercept $\beta_0$ with a proper prior by
+default. Set `mean = 0` to use the original example's zero population prior mean;
+that removes the intercept parameter and its prior. This vignette also replaces
+the original example's empirical Bayes hyperparameter estimates with joint
+Bayesian inference. The paper already discusses full Bayesian inference; the
+package implements that approach. With its explicit hyperparameter priors and
+estimated intercept, this vignette is not an exact numerical reproduction of
+the original analysis.
 
 ```{r priors}
 priors <- cgp_priors(

@@ -12,9 +12,9 @@ measurements using an exact dense Gaussian process covariance.
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/aejensen/censored-gp}
+  \item \url{https://github.com/adamgorm/censored-gp}
   \item \doi{10.1002/sim.70277}
-  \item Report bugs at \url{https://github.com/aejensen/censored-gp/issues}
+  \item Report bugs at \url{https://github.com/adamgorm/censored-gp/issues}
 }
 
 }
