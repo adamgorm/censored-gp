@@ -1,14 +1,15 @@
 // Same likelihood and state as gaussian-reference.stan, with a custom adjoint.
 functions {
   real cgp_gaussian_log_density(vector state, data matrix distance2,
-    data matrix group_cov, data vector observed, data int kernel);
+                                data matrix group_cov, data vector observed,
+                                data int kernel);
 }
 data {
   int<lower=1> N;
-  int<lower=0,upper=N> No;
-  int<lower=1,upper=4> kernel;
-  matrix[N,N] distance2;
-  matrix[N,N] group_cov;
+  int<lower=0, upper=N> No;
+  int<lower=1, upper=4> kernel;
+  matrix[N, N] distance2;
+  matrix[N, N] group_cov;
   vector[No] observed;
 }
 parameters {

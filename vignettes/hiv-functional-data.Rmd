@@ -1,0 +1,367 @@
+---
+title: "Censored HIV viral-load curves with full Bayesian inference"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+vignette: >
+  %\VignetteIndexEntry{Censored HIV viral-load curves with full Bayesian inference}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                     fig.height = 4.5, dpi = 120)
+library(censoredGP)
+library(ggplot2)
+run_stan <- identical(Sys.getenv("CENSOREDGP_RUN_STAN"), "true")
+report <- readRDS(system.file("extdata", "hiv-paper-analysis.rds",
+                            package = "censoredGP"))
+theme_set(theme_minimal(base_size = 11))
+```
+
+This example revisits the HIV-1 RNA analysis in section 5 of
+[Hoffmann et al. (2025)](https://doi.org/10.1002/sim.70277). It estimates a
+population trajectory and patient trajectories while accounting for measurements
+below the assay limit. Covariance hyperparameters and the population intercept
+are sampled jointly with censored measurements, using proper, explicit priors.
+
+The figures and diagnostics bundled with the package were produced by the
+four-chain Stan fit shown below. Ordinary vignette builds use those saved
+results, so reading or installing the package does not run MCMC. To rerun the
+complete analysis, install CmdStan >= 2.37 and set
+`Sys.setenv(CENSOREDGP_RUN_STAN = "true")` before rebuilding this vignette.
+The repository's `tools/run-paper-example.R` regenerates the bundled results.
+
+## Describe what was observed
+
+```{r data}
+hiv <- hiv_a5055()
+head(hiv)
+table(hiv$censoring)
+length(unique(hiv$subject))
+range(hiv$day)
+```
+
+There are 365 measurements from 44 patients, collected on days 0 through 205.
+Of these, 110 indicate an RNA concentration below 50 copies/mL. We model the
+log10 concentration. For a censored row, `log_rna` contains `log10(50)`, the
+upper detection limit. It does **not** contain a substituted response used as an
+exact measurement. The original RNA column is retained for inspection.
+
+```{r response}
+cens(hiv$log_rna[1:8], hiv$censoring[1:8])
+```
+
+The interface describes censoring separately at every observation. For example,
+the following response combines all four observation mechanisms:
+
+```{r mixed-censoring}
+mixed <- data.frame(
+  time = c(0, 0.2, 0.5, 1, 1.4),
+  value = c(2.8, 1.7, 3.2, 2.0, 1.3),
+  type = c("none", "left", "right", "interval", "left"),
+  upper = c(NA, NA, NA, 2.4, NA)
+)
+cens(mixed$value, mixed$type, mixed$upper)
+# Fit with: cgp(cens(value, type, upper) ~ time, mixed, priors = ...)
+```
+
+For an exact row, `value` is the measured response. It is the upper limit for
+left censoring, the lower limit for right censoring, and the lower endpoint for
+interval censoring; `upper` supplies the interval's other endpoint. Notice that
+the two left-censored rows have different limits. A logical censoring vector is
+shorthand for left censored (`TRUE`) versus exact (`FALSE`).
+
+Censoring concerns the noisy **measurement**, not a hard bound on the latent
+smooth function. Missing measurements should be omitted rather than coded as
+censored. The observation process is assumed to be described by the supplied
+value bounds; informative missingness and time-to-event survival models require
+additional modeling.
+
+## Model and priors in scientific units
+
+For patient $g$, the model is
+
+\[
+y_g(t) = \beta_0 + \mu(t) + \eta_g(t) + \epsilon_g(t),
+\qquad \epsilon_g(t) \sim N(0,\sigma^2).
+\]
+
+Both $\mu$ and the patient deviations use squared exponential kernels,
+$k(s,t) = a^2\exp\{-(s-t)^2/(2\ell^2)\}$, with separate amplitudes and length
+scales. Patient deviations have marginal variance $k_\eta(t,t)$ and cross-patient
+covariance $-k_\eta(s,t)/(44-1)$, enforcing $\sum_g\eta_g(t)=0$. Thus the
+population curve is $\beta_0+\mu(t)$ and each patient curve adds its deviation.
+
+We extend the manuscript's zero prior mean by estimating a constant intercept
+$\beta_0$ with a proper prior. Set `mean = 0` to use the manuscript's zero-mean
+specification; that removes the intercept parameter and its prior. We also
+replace the original example's empirical Bayes hyperparameter estimates with
+joint Bayesian inference.
+
+```{r priors}
+priors <- cgp_priors(
+  intercept = normal_prior(3, 1.5),
+  amplitude = student_t_prior(4, 0, 2),
+  lengthscale = lognormal_prior(log(60), 0.7),
+  group_amplitude = normal_prior(0, 1),
+  group_lengthscale = lognormal_prior(log(35), 0.7),
+  sigma = normal_prior(0, 0.5)
+)
+knitr::kable(prior_summary(priors))
+```
+
+Amplitude and noise parameters are standard deviations in log10 copies/mL;
+length scales are in days. Positive parameters with normal or Student-t priors
+use the corresponding distribution restricted to values above zero. The
+intercept's normal prior is unrestricted.
+
+The intercept prior is centered on 1,000 copies/mL and is broad on the log10
+scale: its central 95% interval is approximately 0 to 6 log10 copies/mL. The
+population length-scale prior has median 60 days and a central 90% interval of
+about 19 to 190 days. The corresponding patient length-scale prior has median
+35 days and an interval of about 11 to 111 days. These encode smooth changes
+over weeks to months while allowing shorter changes. The half-normal noise
+prior places 95% of its mass below approximately 0.98 log10 units. Population
+and patient amplitudes permit substantial variation.
+
+These are substantive starting priors in the assay and follow-up units, rather
+than priors fitted to the observed responses. They are not universally suitable
+for another assay or time scale. The typed constructors validate their arguments,
+and changing any prior does not recompile Stan. The other available families are
+`gamma_prior()`, `inv_gamma_prior()`, and `exponential_prior()`.
+
+Check the implied prior curves before fitting:
+
+```{r prior-check, eval=run_stan}
+grid <- data.frame(day = seq(min(hiv$day), max(hiv$day), length.out = 80))
+prior <- prior_predictive(log_rna ~ day, transform(grid, log_rna = 0),
+                          priors = priors, ndraws = 200, seed = 56)
+```
+
+```{r prior-plot, echo=FALSE}
+if (!run_stan) {
+  grid <- report$grid
+  prior <- report$prior
+}
+draw_table <- function(draws, locations, n = 20) {
+  selected <- seq_len(min(n, nrow(draws)))
+  data.frame(day = rep(locations$day, each = length(selected)),
+             draw = rep(selected, times = nrow(locations)),
+             value = as.vector(draws[selected, , drop = FALSE]))
+}
+ggplot(draw_table(prior$latent, grid), aes(day, value, group = draw)) +
+  geom_line(alpha = 0.45, color = "#176487") +
+  geom_hline(yintercept = log10(50), linetype = 2) +
+  labs(x = "Day", y = "log10 RNA (copies/mL)",
+       title = "Prior population curves", subtitle = "20 draws; dashed line: assay limit")
+```
+
+This plot concerns the common population component. It intentionally includes
+very broad trajectories; a prior predictive check is an opportunity to reject
+implausible assumptions before inspecting the fit. To check complete patient
+curves and noisy measurements, pass a grouped design to `prior_predictive()` and
+inspect its `latent` and `response` matrices. Responses in that design are ignored.
+
+## Fit the full Bayesian model
+
+```{r fit, eval=run_stan}
+fit <- cgp(cens(log_rna, censoring) ~ day | subject, hiv,
+  priors = priors, kernel = "exp_quad", mean = "constant",
+  group_structure = "sum_to_zero", parameterization = "quantile",
+  chains = 4, parallel_chains = 4,
+  iter_warmup = 1000, iter_sampling = 1000,
+  adapt_delta = 0.95, max_treedepth = 12, seed = 1627,
+  sig_figs = 18
+)
+summary(fit)
+diagnostics(fit)
+```
+
+The population and patient function values are integrated out analytically.
+Only censored noisy measurements are augmented, together with covariance
+parameters and the intercept. The quantile parameterization is an exact
+triangular change of variables with its Jacobian included. Its likelihood and
+derivatives are implemented in C++ and used by Stan NUTS. It avoids numerical
+integration of a multivariate normal rectangle probability. A directly bounded
+augmentation is available through `parameterization = "bounded"` and targets
+the same posterior.
+
+There is no low-rank kernel approximation, independence approximation, or
+empirical Bayes plug-in estimate. Monte Carlo summaries still have sampling
+error. Dense factorization costs O(n³) time and O(n²) memory, so runtime grows
+with the number of observations.
+
+```{r diagnostics-table, echo=FALSE}
+fit_summary <- if (run_stan) summary(fit) else report$summary
+parameters <- as.data.frame(fit_summary$parameters)
+knitr::kable(parameters[, c("variable", "mean", "sd", "q5", "q95",
+                           "rhat", "ess_bulk", "ess_tail")], digits = 3)
+sampler <- fit_summary$diagnostics
+knitr::kable(data.frame(chain = seq_along(sampler$num_divergent),
+  divergences = sampler$num_divergent,
+  tree_depth_hits = sampler$num_max_treedepth, BFMI = sampler$bfmi), digits = 3)
+```
+
+The reported run has `r sum(sampler$num_divergent)` divergent transitions and
+`r sum(sampler$num_max_treedepth)` maximum-tree-depth hits. The largest
+hyperparameter R-hat is `r sprintf("%.4f", max(parameters$rhat))`; the smallest
+bulk effective sample size is `r round(min(parameters$ess_bulk))`.
+These checks support using this run for the summaries below. They do not replace
+checking prior sensitivity or model adequacy. Sampling took
+`r round(fit_summary$elapsed)` seconds on the development machine, excluding
+compilation and prediction; this is a record of one run, not a general benchmark.
+
+```{r censored-diagnostics, echo=FALSE}
+censored_diagnostics <- if (run_stan) {
+  posterior::summarise_draws(posterior::as_draws(fit, variables = "y_cens"))
+} else report$censored_diagnostics
+```
+
+The 110 augmented censored measurements were checked too: their largest R-hat
+is `r sprintf("%.4f", max(censored_diagnostics$rhat))` and smallest bulk
+effective sample size is `r round(min(censored_diagnostics$ess_bulk))`.
+
+## Population and patient curves
+
+Draws from `posterior_epred()` include latent function uncertainty as well as
+hyperparameter and censored-measurement uncertainty. Each row is a joint curve;
+dependence across locations is retained. The method's name denotes draws of the
+conditional expected measurement, which is the latent smooth function here.
+
+```{r population-prediction, eval=run_stan}
+population_draws <- posterior_epred(fit, grid, component = "population",
+                                    ndraws = 800, seed = 53)
+```
+
+```{r curve-helper, include=FALSE}
+curve_summary <- function(draws, locations) {
+  interval <- apply(draws, 2, quantile, probs = c(0.025, 0.975))
+  cbind(locations, mean = colMeans(draws), lower = interval[1, ], upper = interval[2, ])
+}
+if (!run_stan) population_draws <- report$population_draws
+population <- curve_summary(population_draws, grid)
+```
+
+```{r population-plot, echo=FALSE}
+ggplot(population, aes(day, mean)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#2878A0", alpha = 0.2) +
+  geom_line(color = "#176487", linewidth = 0.8) +
+  geom_point(data = hiv, aes(y = log_rna, shape = censoring), alpha = 0.25) +
+  scale_shape_manual(values = c(none = 16, left = 25), name = "Observation",
+                     breaks = c("none", "left"), labels = c("Exact", "Left censored")) +
+  geom_hline(yintercept = log10(50), linetype = 2) +
+  labs(x = "Day", y = "log10 RNA (copies/mL)",
+       title = "Population trajectory", subtitle = "Pointwise 95% credible interval") +
+  theme(legend.position = "bottom")
+```
+
+As in the manuscript's illustration, inspect patients 1, 9, and 41:
+
+```{r individual-prediction, eval=run_stan}
+individual_grid <- do.call(rbind, lapply(c("1", "9", "41"), function(subject) {
+  transform(grid, subject = factor(subject, levels = levels(hiv$subject)))
+}))
+individual_draws <- posterior_epred(fit, individual_grid, ndraws = 800, seed = 54)
+# The package also offers: plot(fit, type = "latent", groups = c("1", "9", "41"))
+```
+
+```{r individual-plot, echo=FALSE, fig.height=4}
+if (!run_stan) {
+  individual_grid <- report$individual_grid
+  individual_draws <- report$individual_draws
+}
+individual <- curve_summary(individual_draws, individual_grid)
+patients <- hiv[as.character(hiv$subject) %in% c("1", "9", "41"), ]
+ggplot(individual, aes(day, mean)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "#2878A0", alpha = 0.2) +
+  geom_line(color = "#176487", linewidth = 0.8) +
+  geom_point(data = patients, aes(y = log_rna, shape = censoring), size = 2) +
+  scale_shape_manual(values = c(none = 16, left = 25), name = "Observation",
+                     breaks = c("none", "left"), labels = c("Exact", "Left censored")) +
+  geom_hline(yintercept = log10(50), linetype = 2) +
+  facet_wrap(vars(subject), nrow = 1, labeller = label_both) +
+  labs(x = "Day", y = "log10 RNA (copies/mL)",
+       title = "Patient trajectories", subtitle = "Pointwise 95% credible intervals") +
+  theme(legend.position = "bottom")
+```
+
+Triangles show upper limits, rather than exact measurements at those limits.
+The intervals describe smooth functions; an individual latent function can be
+above an assay limit even when a noisy measurement is censored below it.
+These are pointwise intervals, not simultaneous bands over the whole curve.
+For inference on a trajectory's minimum, integral, or differences across times,
+calculate that quantity on each joint draw from `posterior_epred()`.
+
+For quick pointwise summaries, `predict(fit, newdata, type = "population")`
+avoids constructing a full prediction covariance. For new patients, fit
+`group_structure = "independent"`; the sum-to-zero specification is defined
+over the original cohort and cannot be extended to unseen groups unchanged.
+
+## Posterior predictive checks and imputation
+
+`posterior_predict()` draws future noisy measurements at the requested
+locations, preserving their joint dependence. To reproduce this assay's
+censoring event, apply the 50-copy threshold to these draws:
+
+```{r predictive-check, eval=run_stan}
+replicated <- posterior_predict(fit, ndraws = 400, seed = 55)
+replicated_fraction <- rowMeans(replicated < log10(50))
+observed_fraction <- mean(hiv$censoring == "left")
+```
+
+```{r predictive-plot, echo=FALSE}
+if (!run_stan) {
+  replicated_fraction <- report$predictive_censoring_fraction
+  observed_fraction <- report$observed_censoring_fraction
+}
+ggplot(data.frame(fraction = replicated_fraction), aes(fraction)) +
+  geom_histogram(bins = 25, fill = "#2878A0", color = "white") +
+  geom_vline(xintercept = observed_fraction, color = "#B54832", linewidth = 0.8) +
+  labs(x = "Fraction below 50 copies/mL", y = "Posterior predictive replicates",
+       title = "Does the model reproduce the amount of censoring?",
+       subtitle = "Vertical line: observed fraction")
+```
+
+The observed fraction is `r sprintf("%.3f", observed_fraction)`; the central
+90% posterior predictive interval is
+`r paste(sprintf("%.3f", quantile(replicated_fraction, c(0.05, 0.95))), collapse = " to ")`.
+This checks one feature of the data. Further checks should examine changes over
+time, between-patient variation, residual patterns, and sensitivity to priors
+and kernel choice.
+
+Imputing the original censored measurements is a different operation. Each
+imputed measurement must satisfy the bounds that were actually observed:
+
+```{r imputation, eval=run_stan}
+imputed <- impute_censored(fit)
+left <- hiv$censoring == "left"
+stopifnot(all(imputed[, left, drop = FALSE] <= log10(50)))
+stopifnot(all(imputed[, !left, drop = FALSE] ==
+                rep(hiv$log_rna[!left], each = nrow(imputed))))
+```
+
+These assertions were checked on every retained draw when generating the
+bundled analysis. For mixed censoring, `impute_censored()` returns columns in
+the original data order and respects each row's lower and upper limits.
+
+## Keep the fitted model and inspect its implementation
+
+```{r save-fit, eval=FALSE}
+saveRDS(fit, "hiv-fit.rds")
+fit <- readRDS("hiv-fit.rds")
+posterior::as_draws(fit)  # draws with iteration and chain dimensions
+prior_summary(fit)      # indicates which priors are active
+cgp_stancode()          # the complete Stan program
+```
+
+The saved model contains the posterior draws and model information needed for
+prediction. It does not require the original Stan CSV output. Compiled models
+are cached separately in a user-writable directory.
+
+The bundled run used CmdStan `r report$provenance$cmdstan`, package version
+`r report$provenance$package`, seed `r report$provenance$seed`, and four chains
+with 1,000 warmup and 1,000 retained iterations each. Its source hash and
+generation time are recorded in `hiv-paper-analysis.rds` alongside the actual
+posterior curve draws and diagnostics.

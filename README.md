@@ -1,85 +1,134 @@
-# Gaussian process regression for value-censored functional and longitudinal data
+# censoredGP
 
-This repository contains code for running value-censored Gaussian process
-regression as described in the paper:
+Full Bayesian Gaussian process regression for value-censored functional and
+longitudinal data. Each observation can be exact, left censored, right censored,
+or interval censored, with its own limits. Models can describe a single curve
+or a population curve with subject deviations.
 
-A. G. Hoffmann, C. T. Ekstrøm, B. Z. Christoffersen, and A. K. Jensen, *Gaussian
-Process Regression for Value-Censored Functional and Longitudinal Data*,
-Statistics in Medicine 44, no. 20-22 (2025): e70277,
-https://doi.org/10.1002/sim.70277.
+The package extends the model in Hoffmann, Ekstrøm, Christoffersen, and Jensen,
+[*Gaussian Process Regression for Value-Censored Functional and Longitudinal
+Data*](https://doi.org/10.1002/sim.70277), Statistics in Medicine (2025).
+The original empirical Bayes example is preserved in `data_example.R`.
 
-- `data_example.R` draws from and plots the posterior distribution in the HIV-1
-  RNA data set from section 5 of the paper.
-- `functions.stan` contains Stan functions for calculating things needed for
-  drawing from the posterior, e.g., conditional means and covariances.
-- `A5055data.txt` contains the HIV-1 RNA data set.
+## Install
 
-To run the code, you must install
+Install R >= 4.1, a C++17 compiler, CmdStanR, and CmdStan >= 2.37:
 
-- [`cmdstan`](https://mc-stan.org/users/interfaces/cmdstan)
-- [`cmdstanr`](https://mc-stan.org/cmdstanr/)
-
-and the CRAN packages
-
-- `tidyverse`
-- `mvtnorm`
-- `DEoptim`
-- `TruncatedNormal`
-- `abind`
-
-## Optimization prototypes
-
-The `research/` directory contains experimental implementations and reproducible
-benchmarks for an exact, general censored-GP package. These are numerical
-prototypes, not an installable R package yet. The original example above remains
-the implementation accompanying the paper.
-
-The new Stan model integrates out the GP function values and augments only the
-censored measurements. Its joint target is the Gaussian density of the observed
-and augmented measurements, restricted to the censoring bounds, times the prior
-on the covariance parameters. Integrating out the augmented measurements recovers
-the censored-data likelihood in the paper. A normalized truncated-normal density
-must not replace this joint likelihood: its parameter-dependent normalizer would
-remove information about the censoring event.
-
-Two exact parameterizations support mixed left, right, and interval censoring,
-observation-specific limits, irregular input locations, and entirely censored
-data. One directly bounds the augmented measurements; the other uses a sequential
-Gaussian quantile transformation with all required Jacobian terms. The latter
-evaluates univariate log probabilities and quantiles, without numerically
-integrating a multivariate Gaussian CDF. Both fit full Bayesian models; neither
-fixes covariance parameters at empirical Bayes estimates.
-
-A dependency-free C++ header (apart from Eigen) implements dense Gaussian
-likelihoods, analytical first derivatives, and prediction using a cached Cholesky
-factor. Rcpp and Stan adapters share that core. It supports squared exponential,
-exponential, and Matern 3/2 and 5/2 kernels with arbitrary squared input distances
-and supplied group covariance. The current censoring model uses the squared
-exponential kernel and preserves the paper's sum-to-zero group covariance.
-The custom adjoint currently accelerates the directly bounded parameterization;
-the quantile parameterization uses Stan's derivatives.
-
-Run these commands from the repository root, with `Rcpp`, `RcppEigen`,
-`numDeriv`, `mvtnorm`, and `cmdstanr` installed and CmdStan configured:
-
-```sh
-Rscript research/validate-cpp.R
-Rscript research/validate-censoring.R
-Rscript research/benchmark-cpp.R
-Rscript research/benchmark-censoring.R
+```r
+install.packages("cmdstanr", repos = c(
+  "https://stan-dev.r-universe.dev", getOption("repos")
+))
+cmdstanr::install_cmdstan()
+install.packages("remotes")
+remotes::install_github("aejensen/censored-gp", ref = "codex/repo-updates",
+                        build_vignettes = TRUE)
 ```
 
-The C++ benchmark compares identical likelihoods and gradients against a
-vectorized Stan model compiled with `O1`. The censoring benchmark compares
-effective sample size per second for two parameterizations and the custom
-adjoint, with identical simulated data, priors, and iteration counts. Compilation
-is excluded from timings. Results are short pilots on one machine; they do not
-establish a universally fastest method or replace convergence assessment.
+The first fit compiles the model into a user cache. Subsequent fits reuse the
+executable, including when priors, kernels, groups, or censoring limits change.
+The repository owner must agree a redistribution license before a public
+package repository release; the upstream repository currently specifies none.
 
-Prediction can return marginal means and variances without constructing a full
-prediction covariance. Joint predictions retain the full conditional covariance;
-independently sampling the marginals would lose dependence between predictions.
-A cached factor is valid only for its covariance parameters and augmented data.
-No low-rank kernel, independence approximation, or dataset-specific grid
-structure is used. General dense GP factorization still takes cubic time and
-quadratic memory.
+## Observation-specific censoring
+
+```r
+library(censoredGP)
+
+d <- data.frame(
+  time = c(0, 0.2, 0.5, 1),
+  value = c(1.2, 0.4, 1.5, 0.8),
+  type = c("none", "left", "right", "interval"),
+  upper = c(NA, NA, NA, 1.1)
+)
+
+fit <- cgp(cens(value, type, upper) ~ time, d,
+  priors = cgp_priors(
+    intercept = normal_prior(1, 1),
+    amplitude = student_t_prior(4, 0, 1),
+    lengthscale = lognormal_prior(log(0.5), 0.7),
+    sigma = normal_prior(0, 0.5)
+  ), seed = 123
+)
+```
+
+`value` means the exact measurement for `"none"`, the upper limit for `"left"`,
+the lower limit for `"right"`, and the lower endpoint for `"interval"`.
+`upper` supplies interval upper endpoints and is ignored for the other types.
+Rows may mix all four types, and limits may differ within each type. A logical
+censoring column is also accepted: `TRUE` means left censored, `FALSE` exact.
+Missing measurements are not censoring; omit unmeasured rows.
+
+Use `cens(value, type, upper) ~ time | subject` for hierarchical curves, a
+plain `value ~ time` response for entirely observed data, or
+`cens(value, type, upper) ~ cbind(x1, x2) | subject` for multidimensional inputs.
+Kernels are `"exp_quad"`, `"exponential"`, `"matern32"`, and `"matern52"`.
+
+## Priors, predictions, and diagnostics
+
+```r
+prior_summary(fit)
+summary(fit)                       # R-hat and effective sample sizes
+diagnostics(fit)                   # divergences, tree-depth hits, BFMI
+
+grid <- data.frame(time = seq(0, 1, length.out = 80))
+predict(fit, grid)                 # pointwise smooth-curve summaries
+curves <- posterior_epred(fit, grid, seed = 24) # joint smooth-curve draws
+future <- posterior_predict(fit, grid, seed = 25) # joint noisy measurements
+imputed <- impute_censored(fit)    # original measurements, respecting row bounds
+plot(fit)
+
+saveRDS(fit, "fit.rds")            # predictions do not require Stan CSV files
+```
+
+Priors are validated R objects, specified by component in the original units.
+Normal, Student-t, lognormal, gamma, inverse-gamma, and exponential families are
+available. Normal and Student-t priors for positive parameters are truncated at
+zero. An estimated intercept has a normal or Student-t prior. Use `mean = 0` to
+fix the population GP mean to the paper's specification. Default priors assume
+approximately unit-scale responses and inputs; select substantive priors for
+your problem and check them with `prior_predictive()` before fitting. No priors
+or covariance parameters are estimated from the responses before sampling.
+
+Subject deviations default to the paper's sum-to-zero covariance. Use
+`group_structure = "independent"` to model independent deviations and predict
+new subjects. `component = "population"` or `"deviation"` in `posterior_epred()`
+selects those components; a component vector permits a joint request for both.
+
+## HIV example and numerical implementation
+
+```r
+hiv <- hiv_a5055()
+vignette("hiv-functional-data", package = "censoredGP")
+```
+
+The vignette fits the manuscript's 365 measurements from 44 patients with
+explicit priors and full Bayesian inference. Its bundled figures and diagnostics
+come from a real four-chain Stan run. It includes the complete fitting code;
+set `CENSOREDGP_RUN_STAN=true` when rebuilding it to rerun sampling. Maintainers
+can regenerate the bundled results with `Rscript tools/run-paper-example.R`.
+
+The dense GP function values are integrated out analytically. Only censored
+noisy measurements are augmented. A shared Eigen C++ core supplies the likelihood,
+analytical gradients, and conditional predictions. The default exact sequential
+Gaussian quantile transformation includes its full Jacobian; a directly bounded
+parameterization is also available. Neither requires an approximate multivariate
+normal CDF, low-rank covariance, or an empirical Bayes plug-in estimate.
+
+Joint predictions preserve covariance across locations and components. Pointwise
+summaries avoid constructing an unnecessary prediction covariance. Dense GP
+factorization still costs O(n³) time and O(n²) memory. Computation does not assume
+regular grids, shared censoring limits, or the HIV data layout.
+
+For development:
+
+```sh
+Rscript -e 'testthat::test_local()'
+CENSOREDGP_TEST_STAN=true Rscript -e 'testthat::test_local()'
+Rscript tools/validate-core.R
+Rscript tools/validate-stan-gradients.R
+R CMD build .
+R CMD check --no-manual censoredGP_0.1.0.tar.gz
+```
+
+`research/` preserves the earlier optimization experiments and their benchmark
+results. The installed implementation is in `R/`, `src/`, and `inst/`.

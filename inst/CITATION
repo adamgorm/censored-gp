@@ -1,0 +1,16 @@
+bibentry(
+  bibtype = "Article",
+  title = "Gaussian Process Regression for Value-Censored Functional and Longitudinal Data",
+  author = c(
+    person("Adam Gorm", "Hoffmann"),
+    person("Claus Thorn", "Ekstrøm"),
+    person("Benjamin Zeymer", "Christoffersen"),
+    person("Andreas Kryger", "Jensen")
+  ),
+  journal = "Statistics in Medicine",
+  year = "2025",
+  volume = "44",
+  number = "20-22",
+  pages = "e70277",
+  doi = "10.1002/sim.70277"
+)
